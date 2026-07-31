@@ -1,5 +1,14 @@
 # Frontend
 
+```bash
+ng new frontend \
+  --routing \
+  --style=scss \
+  --zoneless \
+  --ssr
+```
+
+
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.0.8.
 
 ## Development server
@@ -57,3 +66,127 @@ Angular CLI does not come with an end-to-end testing framework by default. You c
 ## Additional Resources
 
 For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+
+
+```TypeScript
+
+import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
+import { inject } from '@angular/core';
+
+import { AuthService } from '../services/auth.service';
+import { BehaviorSubject, catchError, filter, switchMap, take, throwError, finalize } from 'rxjs';
+
+
+/*Пришла ошибка
+
+        │
+        ▼
+
+    Это 401?
+
+        │
+   ┌────┴────┐
+   │         │
+  нет       да
+   │         │
+   │         ▼
+throw      Кто-то уже делает refresh?
+               │
+          ┌────┴────┐
+          │         │
+         нет       да
+          │         │
+     refresh()    ждать
+
+*/
+
+
+let isRefreshing = false;
+
+const refreshTokenSubject = new BehaviorSubject<string | null>(null); //Очередь через BehaviorSubject. BehaviorSubject хранит последнее значение.
+
+export const authInterceptor: HttpInterceptorFn = (req, next) => { //Только один refresh одновременно
+    const auth = inject(AuthService);
+
+    const token = auth.getAccessToken();
+
+    const isTokenRequest = req.url.includes('/protocol/openid-connect/token');
+
+    let request = req;
+
+    if (token && !isTokenRequest) { // если токен есть и запрос не на refresh
+        request = req.clone({
+            setHeaders: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+    }
+
+    //Отправляем запрос
+    return next(request).pipe( // Отправили запрос
+        catchError(error => { // Если произошла ошибка
+            if (error instanceof HttpErrorResponse && error.status === 401) { // значит токен просрочился.
+                if (isTokenRequest) { // Защита от рекурсивного refresh
+                    return throwError(() => error);
+                }
+
+                // здесь refresh
+
+                if (!isRefreshing) {
+                    isRefreshing = true;
+
+                    // Сбрасываем последнее значение.
+                    // Все новые запросы будут ждать, пока refreshTokenSubject не получит новый access token.
+                    refreshTokenSubject.next(null);
+
+                    return auth.refreshToken().pipe( // Обновили и...
+                        switchMap(response => { // ...получили новый JWT
+                            auth.saveTokens(response);
+
+                            refreshTokenSubject.next(response.access_token);
+
+                            const retry = request.clone({ // Повторяем запрос
+                                setHeaders: {
+                                    Authorization: `Bearer ${response.access_token}`
+                                }
+                            });
+
+                            return next(retry);
+                        }),
+                        catchError(error => {
+                            auth.logout();
+                            return throwError(() => error);
+                        }),
+                        finalize(() => {
+                            isRefreshing = false;
+                        })
+                    );
+                }
+
+                //Если refresh не удался. Сессия закончилась. Переходим на Login.
+                return refreshTokenSubject.pipe( // Ждать Пока не появится токен
+                    filter((token): token is string => token !== null),
+
+                    take(1),
+
+                    switchMap(token => {
+                        const retry = request.clone({
+                            setHeaders: {
+                                Authorization: `Bearer ${token}`
+                            }
+                        });
+                        return next(retry);
+                    })
+                );
+
+            } // end 401
+
+            return throwError(() => error); // Если ошибка не 401, то просто пробрасываем её дальше
+        })
+    );
+
+};
+
+
+```
+

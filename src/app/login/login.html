@@ -1,0 +1,22 @@
+<h2>Login</h2>
+
+<div>
+    <label>Username</label>
+    <br>
+    <input type="text" (input)="usernameChanged($event)">
+    <p>Username: {{ username() }}</p>
+</div>
+
+<br>
+
+<div>
+    <label>Password</label>
+    <br>
+    <input type="password" (input)="passwordChanged($event)">
+    <p>Password: {{ password() }}</p>
+</div>
+
+<br>
+
+<button (click)="login()" [disabled]="!canLogin()">Login</button>
+<p>Can login: {{ canLogin() }}</p>

@@ -1,0 +1,77 @@
+<button (click)="logout()">Logout</button>
+
+<h2>Welcome {{ auth.username() }}</h2>
+
+<p>
+    Token expires: {{ auth.expiration() }}
+</p>
+
+<ul>
+    @for (role of auth.roles(); track role) {
+    <li>{{ role }}</li>
+    }
+</ul>
+
+@if (loading()) {
+<p>Loading accounts...</p>
+}
+
+<h2>Open account</h2>
+
+<input #holder type="text" placeholder="Account holder">
+
+<input #balance type="number" placeholder="Opening balance">
+
+<select #type>
+    <option value="CURRENT">CURRENT</option>
+    <option value="SAVINGS">SAVINGS</option>
+</select>
+
+<button [disabled]="creating()" (click)="openAccount(holder.value, balance.value, type.value)">
+    Open
+</button>
+
+@if (error()) {
+<p class="error">{{ error() }}</p>
+}
+
+@if (success()) {
+<p class="success">{{ success() }}</p>
+}
+
+
+@if (accounts().length > 0) {
+
+<h3>Your accounts ({{ accounts().length }})</h3>
+
+<table>
+
+    <thead>
+        <tr>
+            <th>Id</th>
+            <th>Holder</th>
+            <th>Type</th>
+            <th>Balance</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        @for (account of accounts(); track account.id) {
+        <tr>
+            <td>{{ account.id }}</td>
+            <td>{{ account.accountHolder }}</td>
+            <td>{{ account.accountType }}</td>
+            <td class="balance">{{ account.balance }}</td>
+        </tr>
+        }
+    </tbody>
+
+</table>
+
+} @else {
+
+<h2>Accounts</h2>
+
+<p>No accounts found.</p>
+
+}
