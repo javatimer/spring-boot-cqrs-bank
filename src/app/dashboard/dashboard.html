@@ -1,77 +1,355 @@
-<button (click)="logout()">Logout</button>
+<!-- mat-toolbar — панель приложения. -->
+<mat-toolbar color="primary">
 
-<h2>Welcome {{ auth.username() }}</h2>
+    <mat-icon>account_balance</mat-icon>
 
-<p>
-    Token expires: {{ auth.expiration() }}
-</p>
+    <span>TechBank</span>
 
-<ul>
-    @for (role of auth.roles(); track role) {
-    <li>{{ role }}</li>
-    }
-</ul>
+    <span class="spacer"></span>
+
+    <button mat-icon-button (click)="theme.toggleTheme()"
+        [attr.aria-label]="theme.darkMode() ? 'Switch to light theme' : 'Switch to dark theme'">
+
+        <mat-icon>
+            {{ theme.darkMode() ? 'light_mode' : 'dark_mode' }}
+        </mat-icon>
+
+    </button>
+
+    <button mat-button (click)="logout()"><mat-icon>logout</mat-icon>Logout</button>
+
+</mat-toolbar>
+
+<!-- mat-card — базовый контейнер для контента. -->
+<mat-card>
+
+    <!-- mat-card-header — верхняя часть карточки. -->
+    <mat-card-header>
+        <!-- mat-card-title — заголовок. -->
+        <mat-card-title>
+            Welcome {{ auth.username() }}
+        </mat-card-title>
+    </mat-card-header>
+
+    <!-- mat-card-content — основная область. -->
+    <mat-card-content>
+        <p>
+            Token expires: {{ auth.expiration() | date:'dd.MM.yyyy HH:mm:ss' }}
+        </p>
+
+        <ul>
+            @for (role of auth.roles(); track role) {
+            <li>{{ role }}</li>
+            }
+        </ul>
+    </mat-card-content>
+
+</mat-card>
+
+@if (auth.isAdmin()) {
+<mat-card class="admin-card">
+    <mat-card-header>
+        <mat-icon>admin_panel_settings</mat-icon>
+
+        <mat-card-title>
+            Administration
+        </mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+        <p class="admin-description">
+            Administrative operations for maintaining the read database.
+        </p>
+
+        <button mat-raised-button color="primary" (click)="restoreReadDb()">
+            <mat-icon>database</mat-icon>Rebuild Read Database
+        </button>
+    </mat-card-content>
+</mat-card>
+}
 
 @if (loading()) {
-<p>Loading accounts...</p>
-}
 
-<h2>Open account</h2>
+<app-dashboard-skeleton />
 
-<input #holder type="text" placeholder="Account holder">
+} @else {
 
-<input #balance type="number" placeholder="Opening balance">
+<div class="dashboard-cards">
+    <mat-card>
+        <mat-card-content>
+            <mat-icon>account_balance</mat-icon>
+            <div class="title">Accounts</div>
+            <div class="value">{{ totalAccounts() }}</div>
+        </mat-card-content>
+    </mat-card>
 
-<select #type>
-    <option value="CURRENT">CURRENT</option>
-    <option value="SAVINGS">SAVINGS</option>
-</select>
+    <mat-card>
+        <mat-card-content>
+            <mat-icon>payments</mat-icon>
+            <div class="title">Total balance</div>
+            <div class="value positive">
+                {{ totalBalance() | number:'1.2-2' }}
+            </div>
+        </mat-card-content>
+    </mat-card>
 
-<button [disabled]="creating()" (click)="openAccount(holder.value, balance.value, type.value)">
-    Open
-</button>
+    <mat-card>
+        <mat-card-content>
+            <mat-icon>credit_card</mat-icon>
+            <div class="title">Current</div>
+            <div class="value">
+                {{ currentAccounts() }}
+            </div>
+        </mat-card-content>
+    </mat-card>
 
-@if (error()) {
-<p class="error">{{ error() }}</p>
-}
+    <mat-card>
+        <mat-card-content>
+            <mat-icon>savings</mat-icon>
+            <div class="title">Savings</div>
+            <div class="value">
+                {{ savingsAccounts() }}
+            </div>
+        </mat-card-content>
+    </mat-card>
+</div>
 
-@if (success()) {
-<p class="success">{{ success() }}</p>
-}
+
+<!-- OPEN -->
+<mat-card>
+
+    <mat-card-header>
+        <mat-icon>account_balance</mat-icon>
+        <mat-card-title>Open account</mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+        <form [formGroup]="openAccountForm" (ngSubmit)="openAccount()">
+            <mat-form-field appearance="outline">
+                <mat-label>Account holder</mat-label>
+                <input matInput formControlName="accountHolder" placeholder="Account holder">
+                @if (openAccountForm.controls.accountHolder.invalid &&(openAccountForm.controls.accountHolder.dirty ||
+                openAccountForm.controls.accountHolder.touched)) {
+                <mat-error>Account holder is required</mat-error>
+                }
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+                <mat-label>Opening balance</mat-label>
+                <input matInput type="number" formControlName="openingBalance">
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+                <mat-label>Account type</mat-label>
+
+                <mat-select formControlName="accountType">
+                    <mat-option value="CURRENT"><span class="account-type current">CURRENT</span></mat-option>
+                    <mat-option value="SAVINGS"><span class="account-type savings">SAVINGS</span></mat-option>
+                </mat-select>
+            </mat-form-field>
+
+            <!-- mat-raised-button — кнопка с объемным стилем. -->
+            <button mat-raised-button color="primary" type="submit" [disabled]="creating()">
+                @if (creating()) {
+                <mat-spinner diameter="18"></mat-spinner>
+                } @else {
+                Open
+                }
+            </button>
+        </form>
+    </mat-card-content>
+
+</mat-card>
+
+<!-- SEARCH -->
+<mat-card>
+
+    <mat-card-header>
+        <mat-icon>search</mat-icon><mat-card-title>Search accounts</mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+
+        <div class="search-toolbar">
+
+            <mat-form-field appearance="outline">
+                <mat-label>Holder</mat-label>
+                <input matInput [value]="holder()" (input)="holder.set($any($event.target).value)">
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+                <mat-label>Balance</mat-label>
+                <input matInput type="number" [value]="balance()" (input)="balance.set(+$any($event.target).value)">
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+                <mat-label>Condition</mat-label>
+
+                <mat-select [value]="equality()" (valueChange)="equality.set($event)">
+
+                    <mat-option [value]="EqualityType.GREATER_THAN">
+                        >
+                    </mat-option>
+
+                    <mat-option [value]="EqualityType.GREATER_THAN_EQUAL">
+                        ≥
+                    </mat-option>
+
+                    <mat-option [value]="EqualityType.LESS_THAN">
+                        < </mat-option>
+
+                            <mat-option [value]="EqualityType.LESS_THAN_EQUAL">
+                                ≤
+                            </mat-option>
+
+                            <mat-option [value]="EqualityType.EQUAL">
+                                =
+                            </mat-option>
+
+                </mat-select>
+
+            </mat-form-field>
+
+            <button mat-raised-button color="primary" (click)="searchByHolder()">
+                <mat-icon>person</mat-icon>Holder
+            </button>
+
+            <button mat-raised-button color="primary" (click)="searchByBalance()">
+                <mat-icon>payments</mat-icon>Balance
+            </button>
+
+            <button mat-button color="warn" (click)="resetFilters()">
+                Reset
+            </button>
+
+        </div>
+
+    </mat-card-content>
+
+</mat-card>
+
 
 
 @if (accounts().length > 0) {
 
-<h3>Your accounts ({{ accounts().length }})</h3>
+<div class="section-title">
 
-<table>
+    <mat-icon>account_balance</mat-icon>
 
-    <thead>
-        <tr>
-            <th>Id</th>
-            <th>Holder</th>
-            <th>Type</th>
-            <th>Balance</th>
-        </tr>
-    </thead>
+    <h2>Your accounts</h2>
 
-    <tbody>
-        @for (account of accounts(); track account.id) {
-        <tr>
-            <td>{{ account.id }}</td>
-            <td>{{ account.accountHolder }}</td>
-            <td>{{ account.accountType }}</td>
-            <td class="balance">{{ account.balance }}</td>
-        </tr>
-        }
-    </tbody>
+    <span class="count">{{ accounts().length }}</span>
 
-</table>
+</div>
+
+<div class="table-container mat-elevation-z2">
+
+    <table mat-table [dataSource]="dataSource" matSort (matSortChange)="sortChanged($event)">
+
+        <ng-container matColumnDef="holder">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header="accountHolder">
+                <span class="header-content"><mat-icon>person</mat-icon>Holder</span>
+            </th>
+            <td mat-cell *matCellDef="let account">{{ account.accountHolder }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="type">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header="accountType">
+                <span class="header-content"><mat-icon>account_balance</mat-icon>Type</span>
+            </th>
+
+            <td mat-cell *matCellDef="let account">
+                @if(account.accountType === 'CURRENT') {
+                <span class="account-type current">CURRENT</span>
+                }
+                @if(account.accountType === 'SAVINGS') {
+                <span class="account-type savings">SAVINGS</span>
+                }
+            </td>
+        </ng-container>
+
+        <ng-container matColumnDef="balance">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header="balance">
+                <span class="header-content"><mat-icon>payments</mat-icon>Balance</span>
+            </th>
+            <td mat-cell *matCellDef="let account">
+                <span [class.balance-positive]="account.balance > 0" [class.balance-zero]="account.balance === 0"
+                    [class.balance-negative]="account.balance < 0">
+                    {{ account.balance | number:'1.2-2' }}
+                </span>
+            </td>
+        </ng-container>
+
+        <ng-container matColumnDef="deposit">
+            <th mat-header-cell *matHeaderCellDef>
+                <span class="header-content"><mat-icon>add_circle</mat-icon>Deposit</span>
+            </th>
+
+            <td mat-cell *matCellDef="let account">
+                <div class="action-cell">
+                    <mat-form-field appearance="outline" class="amount-field">
+                        <input matInput type="number" min="1" [value]="depositAmounts()[account.id] ?? ''"
+                            (input)="setDepositAmount(account.id, $any($event.target).value)">
+                    </mat-form-field>
+                    <button mat-raised-button color="primary" (click)="deposit(account.id)">
+                        <mat-icon>add</mat-icon>Deposit
+                    </button>
+                </div>
+            </td>
+        </ng-container>
+
+        <ng-container matColumnDef="withdraw">
+            <th mat-header-cell *matHeaderCellDef>
+                <span class="header-content"><mat-icon>remove_circle</mat-icon>Withdraw</span>
+            </th>
+
+            <td mat-cell *matCellDef="let account">
+                <div class="action-cell">
+                    <mat-form-field appearance="outline" class="amount-field">
+                        <input matInput type="number" min="1" [value]="withdrawAmounts()[account.id] ?? ''"
+                            (input)="setWithdrawAmount(account.id, $any($event.target).value)">
+                    </mat-form-field>
+                    <button mat-raised-button color="primary" (click)="withdraw(account.id)">
+                        <mat-icon>remove</mat-icon>Withdraw</button>
+                </div>
+            </td>
+        </ng-container>
+
+        <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef>
+                <span class="header-content"><mat-icon>settings</mat-icon>Actions</span>
+            </th>
+            <td mat-cell *matCellDef="let account">
+                <button mat-icon-button color="warn" (click)="close(account.id)">
+                    <mat-icon>delete</mat-icon>
+                </button>
+            </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+
+        <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+
+    </table>
+
+    <mat-paginator [pageSize]="5" [pageSizeOptions]="[5, 10, 20]" showFirstLastButtons></mat-paginator>
+</div>
 
 } @else {
 
-<h2>Accounts</h2>
+<div class="empty-state">
 
-<p>No accounts found.</p>
+    <mat-icon>account_balance_wallet</mat-icon>
+
+    <h3>No accounts found</h3>
+
+    <p>
+        Open your first account to start working with TechBank.
+    </p>
+
+</div>
+
+}
+
 
 }

@@ -1,0 +1,29 @@
+.login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: var(--mat-sys-surface);
+    color: var(--mat-sys-on-surface);
+}
+
+.login-card {
+    width: 420px;
+    background: var(--mat-sys-surface-container);
+    color: var(--mat-sys-on-surface);
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+mat-form-field {
+    width: 100%;
+}
+
+button {
+    align-self: flex-end;
+    min-width: 120px;
+}

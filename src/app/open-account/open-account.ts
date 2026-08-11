@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, computed } from '@angular/core';
 
 @Component({
   selector: 'app-open-account',
@@ -7,7 +7,17 @@ import { Component, signal } from '@angular/core';
   styleUrl: './open-account.scss',
 })
 export class OpenAccount {
-  holder = signal('');
-  accountType = signal('SAVINGS');
-  openingBalance = signal(0);
+
+  count = signal(0);
+
+  isEven = computed(() => this.count() % 2 === 0);
+
+  increment() {
+    this.count.set(this.count() + 1);
+  }
+
+  decrement() {
+    this.count.set(this.count() - 1);
+  }
+
 }

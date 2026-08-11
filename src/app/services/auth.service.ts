@@ -5,20 +5,44 @@ import { Service } from '@angular/core';
 
 import { environment } from '../../environments/environment';
 import { TokenResponse } from '../models/token-response';
-import { BehaviorSubject, filter, Observable, switchMap, take, throwError, finalize, catchError } from 'rxjs';
+import { BehaviorSubject, filter, Observable, switchMap, take, throwError, finalize, catchError, tap } from 'rxjs';
 import { JwtPayload } from '../models/JwtPayload';
+import { AuthState } from '../models/auth-state';
 
 @Service()
 export class AuthService {
+    private static readonly TOKEN_ENDPOINT = '/protocol/openid-connect/token';
     private isRefreshing = false;
     private refreshTokenSubject = new BehaviorSubject<string | null>(null);
     private readonly http = inject(HttpClient);
     private readonly router = inject(Router);
-    private readonly token = signal<string | null>(localStorage.getItem('access_token'));
 
-    readonly username = computed(() => this.getUsername());
-    readonly roles = computed(() => this.getRoles());
-    readonly expiration = computed(() => this.getExpiration());
+    private refreshTimer?: ReturnType<typeof setTimeout>;
+
+    private readonly state = signal<AuthState>({
+        accessToken: localStorage.getItem('access_token'),
+        refreshToken: localStorage.getItem('refresh_token'),
+        payload: localStorage.getItem('access_token') ? this.decode(localStorage.getItem('access_token')!) : null
+    });
+
+    readonly username = computed(() => this.state().payload?.preferred_username);
+
+    readonly roles = computed(() => this.state().payload?.realm_access?.roles ?? []);
+
+    readonly expiration = computed(() => {
+        const exp = this.state().payload?.exp;
+        return exp ? new Date(exp * 1000) : null;
+    });
+
+    readonly isLoggedIn = computed(() => this.state().accessToken !== null);
+
+    readonly isAdmin = computed(() => this.roles().includes('ADMIN'));
+
+    constructor() {
+        if (this.isLoggedIn()) {
+            this.scheduleRefresh();
+        }
+    }
 
     private addAuthorizationHeader(request: HttpRequest<unknown>, token: string): HttpRequest<unknown> {
         return request.clone({
@@ -41,7 +65,7 @@ export class AuthService {
     prepareRequest(request: HttpRequest<unknown>): HttpRequest<unknown> {
         const token = this.getAccessToken();
 
-        const isTokenRequest = request.url.includes('/protocol/openid-connect/token');
+        const isTokenRequest = this.isTokenEndpoint(request.url);
 
         if (!token || isTokenRequest) {
             return request;
@@ -59,31 +83,19 @@ export class AuthService {
 
         this.refreshTokenSubject.next(null);
 
-        return this.refreshToken().pipe(
-            switchMap(response => {
-                this.saveTokens(response);
-                this.refreshTokenSubject.next(response.access_token);
-                return next(this.addAuthorizationHeader(request, response.access_token));
-            }),
-            catchError(error => {
-                //this.logout();
-                this.clearTokens();
-                return throwError(() => error);
-            }),
-            finalize(() => this.isRefreshing = false)
-        );
-    }
-
-    getUsername() {
-        const payload = this.decodeToken();
-
-        return payload?.preferred_username;
-    }
-
-    getRoles() {
-        const payload = this.decodeToken();
-
-        return payload?.realm_access?.roles ?? [];
+        return this.refreshToken()
+            .pipe(
+                switchMap(() => {
+                    const token = this.getAccessToken()!;
+                    this.refreshTokenSubject.next(token);
+                    return next(this.addAuthorizationHeader(request, token));
+                }),
+                catchError(error => {
+                    this.logout();
+                    return throwError(() => error);
+                }),
+                finalize(() => this.isRefreshing = false)
+            );
     }
 
     currentUser() {
@@ -91,17 +103,7 @@ export class AuthService {
         //return this.http.get<User>(environment.apiUrl + '/me');
     }
 
-    getExpiration(): Date | null {
-        const payload = this.decodeToken();
-
-        if (!payload) {
-            return null;
-        }
-
-        return new Date(payload.exp * 1000);
-    }
-
-    login(username: string, password: string) {
+    login(username: string, password: string): Observable<TokenResponse> {
         const body = new URLSearchParams();
 
         body.set('grant_type', 'password');
@@ -109,48 +111,60 @@ export class AuthService {
         body.set('username', username);
         body.set('password', password);
 
-        return this.http.post<TokenResponse>(
-            environment.keycloakUrl,
-            body.toString(),
+        return this.http.post<TokenResponse>(environment.keycloakUrl, body.toString(),
             {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
                 }
             }
-        );
+        )
+            .pipe(
+                tap(response => this.saveTokens(response))
+            );
     }
 
     logout(): void {
+        if (!this.isLoggedIn()) {
+            return;
+        }
+
+        clearTimeout(this.refreshTimer);
+
+        this.isRefreshing = false;
+        this.refreshTokenSubject.next(null);
+
         this.clearTokens();
+
         this.router.navigate(['/login']);
     }
 
-    isLoggedIn(): boolean {
-        const expiration = this.getExpiration();
-
-        return expiration !== null && expiration > new Date();
-    }
-
     getAccessToken(): string | null {
-        return localStorage.getItem('access_token');
+        return this.state().accessToken;
     }
 
     getRefreshToken(): string | null {
-        return localStorage.getItem('refresh_token');
+        return this.state().refreshToken;
     }
 
-    saveTokens(response: TokenResponse) {
-        localStorage.setItem('access_token', response.access_token);
-        localStorage.setItem('refresh_token', response.refresh_token);
+    private saveTokens(response: TokenResponse): void {
+        const payload = this.decode(response.access_token);
 
-        this.token.set(response.access_token);
+        this.state.set({
+            accessToken: response.access_token,
+            refreshToken: response.refresh_token,
+            payload
+        });
+
+        localStorage.setItem("access_token", response.access_token);
+        localStorage.setItem("refresh_token", response.refresh_token);
+
+        this.scheduleRefresh();
     }
 
-    refreshToken() {
+    refreshToken(): Observable<TokenResponse> {
         const refreshToken = this.getRefreshToken();
 
         if (!refreshToken) {
-            //this.logout();
             return throwError(() => new Error('Refresh token is missing'));
         }
 
@@ -159,35 +173,66 @@ export class AuthService {
         body.set('client_id', 'account-service');
         body.set('refresh_token', refreshToken);
 
-        return this.http.post<TokenResponse>(
-            environment.keycloakUrl,
-            body.toString(),
+        return this.http.post<TokenResponse>(environment.keycloakUrl, body.toString(),
             {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
                 }
             }
-        );
+        )
+            .pipe(
+                tap(response => this.saveTokens(response))
+            );
     }
 
-    private clearTokens(): void {
-        this.token.set(null);
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
+    isTokenEndpoint(url: string): boolean {
+        return url.includes(AuthService.TOKEN_ENDPOINT);
     }
 
-    private decodeToken(): JwtPayload | null {
-        const token = this.getAccessToken();
+    private clearTokens() {
+        this.state.set({
+            accessToken: null,
+            refreshToken: null,
+            payload: null
+        });
 
-        if (!token) {
-            return null;
-        }
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+    }
 
+    private decode(token: string): JwtPayload | null {
         try {
-            const payload = token.split('.')[1];
-            return JSON.parse(atob(payload)) as JwtPayload;
+            const payload = token.split('.')[1]
+                .replace(/-/g, '+')
+                .replace(/_/g, '/');
+
+            return JSON.parse(atob(payload));
         } catch {
             return null;
         }
+    }
+
+    private scheduleRefresh() {
+        clearTimeout(this.refreshTimer);
+
+        const exp = this.state().payload?.exp;
+
+        if (!exp) {
+            return;
+        }
+
+        const delay = exp * 1000 - Date.now() - 60_000; // Refresh 1 minute before expiration
+
+        const refresh = () =>
+            this.refreshToken().subscribe({
+                error: () => this.logout()
+            });
+
+        if (delay <= 0) {
+            refresh();
+            return;
+        }
+
+        this.refreshTimer = setTimeout(refresh, delay);
     }
 }

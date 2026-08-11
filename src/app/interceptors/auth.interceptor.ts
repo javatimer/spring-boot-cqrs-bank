@@ -9,7 +9,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
     const request = auth.prepareRequest(req);
 
-    const isTokenRequest = req.url.includes('/protocol/openid-connect/token');
+    const isTokenRequest = auth.isTokenEndpoint(request.url);
 
     return next(request).pipe(
         catchError(error => {
@@ -18,16 +18,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
             }
 
             if (isTokenRequest) {
-                //auth.logout();
                 return throwError(() => error);
             }
 
-            return auth.handle401(request, next).pipe(
-                catchError(error => {
-                    auth.logout();
-                    return throwError(() => error);
-                })
-            );
+            return auth.handle401(request, next);
         })
     );
 

@@ -1,0 +1,7 @@
+export enum EqualityType {
+    GREATER_THAN = 'GREATER_THAN',
+    GREATER_THAN_EQUAL = 'GREATER_THAN_EQUAL',
+    LESS_THAN = 'LESS_THAN',
+    LESS_THAN_EQUAL = 'LESS_THAN_EQUAL',
+    EQUAL = 'EQUAL'
+}
