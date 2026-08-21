@@ -190,3 +190,36 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => { //Тольк�
 
 ```
 
+
+Check current dependencies
+```bash
+npm outdated
+```
+
+
+Update remaining dependencies
+```bash
+npm install -g npm-check-updates
+ncu
+ncu -u
+```
+
+
+After updating package.json, remove package-lock.json and node_modules, then reinstall packages:
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
+
+
+Clear the NPM cache
+```bash
+npm cache clean --force
+```
+
+Run the application and fix errors
+```bash
+npm start
+```
+
+https://medium.com/@angir777/how-to-update-an-angular-project-a-practical-guide-1546245c0d4d
