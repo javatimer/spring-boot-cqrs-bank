@@ -196,6 +196,11 @@ Check current dependencies
 npm outdated
 ```
 
+Update
+```bash
+npm update
+```
+
 
 Update remaining dependencies
 ```bash
