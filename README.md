@@ -190,41 +190,78 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => { //Тольк�
 
 ```
 
+## 🚀 Управление зависимостями и обновление проекта
 
-Check current dependencies
-```bash
-npm outdated
-```
+> ⚠️ **Важно:** Никогда не обновляйте пакеты Angular (`@angular/core`, `@angular/cli`, `@angular/material`) через `npm update` или `ncu`. Это не запустит внутренние миграции кода и полностью сломает сборку проекта. Всегда используйте официальный Angular CLI.
 
-Update
-```bash
-npm update
-```
+### 1. Правильное обновление Angular (Рекомендуемый способ)
 
+Перед началом убедитесь, что ваш Git-репозиторий «чистый» (все изменения закоммичены).
 
-Update remaining dependencies
-```bash
-npm install -g npm-check-updates
-ncu
-ncu -u
-```
+1. **Проверить доступные обновления Angular:**
+   ```bash
+   ng update
+   ```
+2. **Запустить автоматическое обновление экосистемы:**
+   * *Если проект использует Angular Material:*
+     ```bash
+     ng update @angular/core @angular/cli @angular/material
+     ```
+   * *Если Angular Material НЕ используется:*
+     ```bash
+     ng update @angular/core @angular/cli
+     ```
 
+---
 
-After updating package.json, remove package-lock.json and node_modules, then reinstall packages:
-```bash
-rm -rf node_modules package-lock.json
-npm install
-```
+### 2. Обновление сторонних библиотек (RxJS, Lodash и др.)
 
+Выполняйте эти шаги только **после** успешного обновления самого Angular.
 
-Clear the NPM cache
-```bash
-npm cache clean --force
-```
+1. **Проверить устаревшие сторонние зависимости:**
+   ```bash
+   npm outdated
+   ```
+2. **Обновить обычные пакеты (в рамках разрешенных версий):**
+   ```bash
+   npm update
+   ```
+3. **Принудительное обновление до самых свежих мажорных версий (опционально):**
+   ```bash
+   # Установка утилиты npm-check-updates глобально (если не установлена)
+   npm install -g npm-check-updates
+   
+   # Интерактивное обновление package.json
+   ncu -u
+   ```
 
-Run the application and fix errors
+---
+
+### 3. Решение проблем и «жесткая» перезагрузка (Troubleshooting)
+
+Если после обновления версий возникли конфликты зависимостей, ошибки сборки или кэша, выполните полную переустановку пакетов:
+
+1. **Удалить старые зависимости и lock-файл:**
+   ```bash
+   rm -rf node_modules package-lock.json
+   ```
+2. **Очистить кэш пакетного менеджера:**
+   ```bash
+   npm cache clean --force
+   ```
+3. **Чистая установка всех пакетов с нуля:**
+   ```bash
+   npm install
+   ```
+
+---
+
+### 4. Запуск приложения
+
+После успешного обновления убедитесь, что проект компилируется без ошибок:
 ```bash
 npm start
+# или
+ng serve
 ```
 
-https://medium.com/@angir777/how-to-update-an-angular-project-a-practical-guide-1546245c0d4d
